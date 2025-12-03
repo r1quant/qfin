@@ -5,10 +5,10 @@ Quantitative finance research tools in Python
 
 ```bash
 # install 
-uv add git+https://github.com/thdft/qfin
+uv add git+https://github.com/r1quant/qfin
 
 # upgrade
-uv add git+https://github.com/thdft/qfin --upgrade-package qfin 
+uv add git+https://github.com/r1quant/qfin --upgrade-package qfin 
 ```
 
 # How to use 
@@ -97,6 +97,15 @@ Instead of creating a new strategy each time, you can reuse certain predefined s
 
 ```python
 from qfin.backtester.runners import bt_signal_change
+
+# date,        close,    signal
+# 2023-01-03,  3824.13,   1
+# 2023-01-04,  3852.96,   1
+# 2023-01-05,  3808.10,   1
+# ...    
+# 2025-04-03,  5396.52,  -1
+# 2025-04-04,  5074.08,  -1
+# 2025-04-07,  5062.25,  -1
 
 df = pd.read_csv("./my_table_above.csv", index_col=0, parse_dates=[0], sep=",")
 
