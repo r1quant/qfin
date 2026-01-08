@@ -28,12 +28,20 @@ def pybit(ticker, start=None, end=None, interval=720, limit=1000, BYBIT_API_KEY=
 
     kLineIntervalDict = {
         "m15": 15,
+        "1h": 60,
+        "1H": 60,
         "h1": 60,
+        "H1": 60,
+        "4h": 240,
+        "4H": 240,
         "h4": 240,
+        "H4": 240,
         "h6": 360,
         "h12": 720,
         "d1": "d",
+        "1d": "d",
         "D1": "d",
+        "1D": "d",
         "D": "d",
     }
 
