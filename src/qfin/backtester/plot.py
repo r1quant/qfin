@@ -86,7 +86,7 @@ def plot_basic(
     footer_result += f"buy & hold: {hold_final_str} ({hold_perc}%)<br>"
 
     # display the plot footer
-    fig.add_annotation( text=footer_result, showarrow=False, x=0.0, y=-0.15, xref="paper", yref="paper", xanchor="left", yanchor="bottom", xshift=-1, yshift=-5, font=dict(size=10, color="grey"), align="left")  # fmt: off
+    fig.add_annotation( text=footer_result, showarrow=False, x=0.0, y=0, xref="paper", yref="paper", xanchor="left", yanchor="bottom", xshift=-1, yshift=-60, font=dict(size=10, color="grey"), align="left")  # fmt: off
     fig.update_layout(margin=dict(l=30, r=10, t=50, b=100))
 
     # show the plot
@@ -124,11 +124,11 @@ def plot_thumbnail(
     if isinstance(stats, pd.Series):
         max_drawdown = round(stats["Max. Drawdown [%]"], 2)
         avg_drawdown = round(stats["Avg. Drawdown [%]"], 2)
-        text2 = text2 + f"\n{max_drawdown}%\n(avg:{avg_drawdown})"
+        text2 = text2 + f"\nmax dd:{max_drawdown}%\n avg dd:{avg_drawdown}"
         # plt.annotate(f"{max_drawdown}%", xy=(1, 1), xycoords="axes fraction")
 
     plt.annotate(text, xy=(0, 1), xycoords="axes fraction", size=10)
-    plt.annotate(text2, xy=(0, 0.5), xycoords="axes fraction", color="grey", size=8)
+    plt.annotate(text2, xy=(0, 0.6), xycoords="axes fraction", color="grey", size=8)
 
     plt.axis("off")
     plt.show()
