@@ -160,4 +160,10 @@ def bybit(
     merged_df = merged_df.drop_duplicates(keep="first")
     merged_df = merged_df.sort_index()
 
+    merged_df["open"] = merged_df["open"].astype(float)
+    merged_df["high"] = merged_df["high"].astype(float)
+    merged_df["low"] = merged_df["low"].astype(float)
+    merged_df["close"] = merged_df["close"].astype(float)
+    merged_df["volume"] = merged_df["volume"].astype(float)
+
     return merged_df
