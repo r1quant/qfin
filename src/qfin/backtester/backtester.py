@@ -20,6 +20,7 @@ class Trade:
     def __init__(self, state=None):
         self.state: BrokerState = state
         self.is_long: bool = None
+        self.leverage: float | None = None
         self.entry_value: float = None
         self.entry_price: float = None
         self.entry_bar: int = None
@@ -129,7 +130,7 @@ class BrokerAccount:
         self.history_equity[self.broker.state.current_bar] = self.equity
         self.history_commission[self.broker.state.current_bar] = round(self.commission_spent, 2)
 
-    def __open(self, is_long: bool = False, value: float = None, price: float = None):
+    def __open(self, is_long: bool = False, value: float = None, price: float = None, leverage: float | None = 1):
         """Open a new trade."""
         if self.netting:
             self.close()
@@ -149,8 +150,12 @@ class BrokerAccount:
             # by cash unit
             entry_value = min(self.params.default_entry_value, self.params.default_entry_value_max)
 
+        if leverage is not None:
+            entry_value = entry_value * leverage
+
         # create a new trade and store it in the account
         opened_trade = Trade(self.broker.state)
+        opened_trade.leverage = leverage
         opened_trade.entry_commission = entry_value * self.params.commission
         opened_trade.entry_value = entry_value - opened_trade.entry_commission
         opened_trade.entry_price = price or self.broker.state.last_price
@@ -178,12 +183,12 @@ class BrokerAccount:
         for trade in list(self.opened_trades):
             self.__close(trade)
 
-    def buy(self):
-        self.__open(is_long=True)
+    def buy(self, leverage=1):
+        self.__open(is_long=True, leverage=leverage)
         pass
 
-    def sell(self):
-        self.__open(is_long=False)
+    def sell(self, leverage=1):
+        self.__open(is_long=False, leverage=leverage)
         pass
 
 
@@ -218,13 +223,13 @@ class Broker:
     def refresh(self):
         self.account_main.refresh_values()
 
-    def buy(self):
+    def buy(self, leverage=1):
         """Start buying."""
-        self.account_main.buy()
+        self.account_main.buy(leverage=leverage)
 
-    def sell(self):
+    def sell(self, leverage=1):
         """Start selling."""
-        self.account_main.sell()
+        self.account_main.sell(leverage=leverage)
 
     def close(self):
         """Close all trades."""
@@ -260,6 +265,7 @@ class Backtester:
         return pd.DataFrame(
             {
                 "is_long": [t.is_long for t in trades],
+                "leverage": [t.leverage for t in trades],
                 "entry_value": [t.entry_value for t in trades],
                 "entry_price": [t.entry_price for t in trades],
                 "entry_bar": [t.entry_bar for t in trades],
