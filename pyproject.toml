@@ -1,6 +1,6 @@
 [project]
 name = "qfin"
-version = "0.1.15"
+version = "0.1.16"
 description = "Tools for quantitative financial"
 readme = "README.md"
 authors = [{ name = "thdft", email = "thdft@users.noreply.github.com" }]

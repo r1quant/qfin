@@ -1306,7 +1306,7 @@ wheels = [
 
 [[package]]
 name = "qfin"
-version = "0.1.15"
+version = "0.1.16"
 source = { editable = "." }
 dependencies = [
     { name = "matplotlib" },
@@ -1332,9 +1332,9 @@ requires-dist = [
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2" },
     { name = "plotly", specifier = ">=6" },
-    { name = "pybit", specifier = ">=5.11.0" },
-    { name = "websocket-client", specifier = ">=1.8.0" },
-    { name = "yfinance", specifier = ">=0.2.65" },
+    { name = "pybit", specifier = ">=5.13.0" },
+    { name = "websocket-client", specifier = ">=1.9.0" },
+    { name = "yfinance", specifier = ">=1.0.0" },
 ]
 
 [package.metadata.requires-dev]
