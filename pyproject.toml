@@ -1,9 +1,9 @@
 [project]
 name = "qfin"
-version = "0.1.16"
+version = "0.1.17"
 description = "Tools for quantitative financial"
 readme = "README.md"
-authors = [{ name = "thdft", email = "thdft@users.noreply.github.com" }]
+authors = [{ name = "r1quant" }]
 requires-python = ">=3.11"
 dependencies = [
     "matplotlib>=3",
@@ -16,8 +16,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/thdft/qfin.git"
-Repository = "https://github.com/thdft/qfin.git"
+Homepage = "https://github.com/r1quant/qfin.git"
+Repository = "https://github.com/r1quant/qfin.git"
 
 [dependency-groups]
 dev = [
