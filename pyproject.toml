@@ -1,6 +1,6 @@
 [project]
 name = "qfin"
-version = "0.1.17"
+version = "0.1.18"
 description = "Tools for quantitative financial"
 readme = "README.md"
 authors = [{ name = "r1quant" }]
