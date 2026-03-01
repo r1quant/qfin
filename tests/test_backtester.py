@@ -202,6 +202,7 @@ class TestBacktester:
             "exit_time",
             "pnl",
             "return_pct",
+            "exit_reason",
         ]
         assert list(trades.columns) == expected_cols
 

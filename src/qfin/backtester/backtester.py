@@ -33,6 +33,11 @@ class Trade:
         self.exit_bar: int | None = None
         self.exit_time: str | None = None
         self.exit_commission: float = 0.0
+        self.trailing_high: float | None = None
+        self.trailing_low: float | None = None
+        self.trailing_stop_price: float | None = None
+        self.breakeven_triggered: bool = False
+        self.exit_reason: str = "manual"
 
     @property
     def pl_value(self) -> float:
@@ -82,13 +87,38 @@ class Params:
         commission: float = 0.01,
         default_entry_value: float = 1,
         default_entry_value_max: float = 1000000.0,
+        trailing_enabled: bool = False,
+        trailing_distance_pct: float = 0,
+        trailing_activation_pct: float = 0,
+        trailing_min_step_pct: float = 0,
+        takeprofit_pct: float = 0,
+        stoploss_pct: float = 0,
+        breakeven_pct: float = 0,
     ) -> None:
+        for name, val in [
+            ("trailing_distance_pct", trailing_distance_pct),
+            ("trailing_activation_pct", trailing_activation_pct),
+            ("trailing_min_step_pct", trailing_min_step_pct),
+            ("takeprofit_pct", takeprofit_pct),
+            ("stoploss_pct", stoploss_pct),
+            ("breakeven_pct", breakeven_pct),
+        ]:
+            if not (0 <= val <= 100):
+                raise ValueError(f"{name} must be between 0 and 100, got {val}")
+
         self.dataset = dataset.copy()
         self.initial_balance = initial_balance
         self.commission = commission
         self.default_entry_value = default_entry_value
         self.default_entry_value_max = default_entry_value_max
         self.close_column = "close"
+        self.trailing_enabled = trailing_enabled
+        self.trailing_distance_pct = trailing_distance_pct
+        self.trailing_activation_pct = trailing_activation_pct
+        self.trailing_min_step_pct = trailing_min_step_pct
+        self.takeprofit_pct = takeprofit_pct
+        self.stoploss_pct = stoploss_pct
+        self.breakeven_pct = breakeven_pct
 
 
 class BrokerState:
@@ -132,8 +162,120 @@ class BrokerAccount:
         self.history_commission: np.ndarray = np.tile(0, len(params.dataset))
         self.commission_spent: float = 0
 
+    def _check_risk_management(self) -> None:
+        """Check and apply risk management rules (SL, TP, breakeven, trailing) to open trades."""
+        params = self.params
+        price = self.broker.state.last_price
+
+        for trade in list(self.opened_trades):
+            # Update trailing high/low
+            if trade.trailing_high is None:
+                trade.trailing_high = price
+            else:
+                trade.trailing_high = max(trade.trailing_high, price)
+
+            if trade.trailing_low is None:
+                trade.trailing_low = price
+            else:
+                trade.trailing_low = min(trade.trailing_low, price)
+
+            # Compute profit percentage
+            if trade.is_long:
+                profit_pct = ((price / trade.entry_price) - 1) * 100
+            else:
+                profit_pct = ((trade.entry_price / price) - 1) * 100
+
+            # Stop Loss
+            if params.stoploss_pct > 0 and profit_pct <= -params.stoploss_pct:
+                trade.exit_reason = "stoploss"
+                self._BrokerAccount__close(trade)
+                continue
+
+            # Take Profit
+            if params.takeprofit_pct > 0 and profit_pct >= params.takeprofit_pct:
+                trade.exit_reason = "takeprofit"
+                self._BrokerAccount__close(trade)
+                continue
+
+            # Breakeven: arm when profit reaches threshold
+            if params.breakeven_pct > 0 and not trade.breakeven_triggered:
+                if profit_pct >= params.breakeven_pct:
+                    trade.breakeven_triggered = True
+
+            # Breakeven stop level
+            breakeven_stop = None
+            if trade.breakeven_triggered:
+                breakeven_stop = trade.entry_price
+
+            # Trailing stop
+            trailing_stop = None
+            if params.trailing_enabled and params.trailing_distance_pct > 0:
+                if profit_pct >= params.trailing_activation_pct:
+                    if trade.is_long:
+                        candidate = trade.trailing_high * (1 - params.trailing_distance_pct / 100)
+                    else:
+                        candidate = trade.trailing_low * (1 + params.trailing_distance_pct / 100)
+
+                    # Apply min step filter: only update if moved enough
+                    if trade.trailing_stop_price is not None:
+                        if trade.is_long:
+                            if params.trailing_min_step_pct > 0:
+                                min_move = trade.trailing_stop_price * params.trailing_min_step_pct / 100
+                                if candidate - trade.trailing_stop_price < min_move:
+                                    candidate = trade.trailing_stop_price
+                            # Stop never moves backward
+                            candidate = max(candidate, trade.trailing_stop_price)
+                        else:
+                            if params.trailing_min_step_pct > 0:
+                                min_move = trade.trailing_stop_price * params.trailing_min_step_pct / 100
+                                if trade.trailing_stop_price - candidate < min_move:
+                                    candidate = trade.trailing_stop_price
+                            # Stop never moves backward (for shorts, lower is better)
+                            candidate = min(candidate, trade.trailing_stop_price)
+
+                    trade.trailing_stop_price = candidate
+                    trailing_stop = candidate
+
+            # Determine effective stop and check breach
+            effective_stop = None
+            dominant_reason = None
+
+            if breakeven_stop is not None and trailing_stop is not None:
+                if trade.is_long:
+                    if trailing_stop >= breakeven_stop:
+                        effective_stop = trailing_stop
+                        dominant_reason = "trailing"
+                    else:
+                        effective_stop = breakeven_stop
+                        dominant_reason = "breakeven"
+                else:
+                    if trailing_stop <= breakeven_stop:
+                        effective_stop = trailing_stop
+                        dominant_reason = "trailing"
+                    else:
+                        effective_stop = breakeven_stop
+                        dominant_reason = "breakeven"
+            elif breakeven_stop is not None:
+                effective_stop = breakeven_stop
+                dominant_reason = "breakeven"
+            elif trailing_stop is not None:
+                effective_stop = trailing_stop
+                dominant_reason = "trailing"
+
+            if effective_stop is not None:
+                breached = False
+                if trade.is_long and price <= effective_stop:
+                    breached = True
+                elif not trade.is_long and price >= effective_stop:
+                    breached = True
+
+                if breached:
+                    trade.exit_reason = dominant_reason
+                    self._BrokerAccount__close(trade)
+
     def refresh_values(self) -> None:
         """Recalculate equity, commissions, and update history arrays for the current bar."""
+        self._check_risk_management()
         self.commission_spent = sum(trade.commissions for trade in self.opened_trades)
         self.commission_spent += sum(trade.commissions for trade in self.closed_trades)
         self.equity = round(self.balance + sum(trade.pl_value - trade.commissions for trade in self.opened_trades), 2)
@@ -255,6 +397,13 @@ class Backtester:
         commission: float = 0.001,
         default_entry_value: float = 1,
         default_entry_value_max: float = 20000,
+        trailing_enabled: bool = False,
+        trailing_distance_pct: float = 0,
+        trailing_activation_pct: float = 0,
+        trailing_min_step_pct: float = 0,
+        takeprofit_pct: float = 0,
+        stoploss_pct: float = 0,
+        breakeven_pct: float = 0,
     ) -> None:
         self.params: Params = Params(
             dataset,
@@ -262,6 +411,13 @@ class Backtester:
             commission,
             default_entry_value,
             default_entry_value_max,
+            trailing_enabled=trailing_enabled,
+            trailing_distance_pct=trailing_distance_pct,
+            trailing_activation_pct=trailing_activation_pct,
+            trailing_min_step_pct=trailing_min_step_pct,
+            takeprofit_pct=takeprofit_pct,
+            stoploss_pct=stoploss_pct,
+            breakeven_pct=breakeven_pct,
         )
 
     def trades(self) -> pd.DataFrame:
@@ -283,6 +439,7 @@ class Backtester:
                 "exit_time": [t.exit_time for t in trades],
                 "pnl": [t.pl_value for t in trades],
                 "return_pct": [t.pl_pct for t in trades],
+                "exit_reason": [t.exit_reason for t in trades],
             }
         )
 
