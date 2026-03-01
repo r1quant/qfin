@@ -4,28 +4,7 @@
 
 `qfin` is a Python library for quantitative finance research. It provides:
 
-1. **API wrappers** — Unified interface to fetch historical price data from Yahoo Finance, Bybit, TradingView, and FRED
-2. **Backtester** — Event-driven backtesting engine for testing trading strategies on historical data
-3. **Indicators** — Signal transformation utilities (crossovers, echo/forward-fill, etc.)
-
-## File Structure
-
-```
-src/qfin/
-├── __init__.py                  # Re-exports Backtester
-├── api/
-│   ├── bybit.py                 # Bybit exchange data (requires API keys)
-│   ├── fred.py                  # FRED macroeconomic data
-│   ├── tv.py                    # TradingView data
-│   └── yahoo.py                 # Yahoo Finance data
-├── backtester/
-│   ├── backtester.py            # Core backtesting engine
-│   ├── plot.py                  # Plotly and matplotlib visualizations
-│   ├── runners.py               # Predefined strategy runners
-│   └── stats.py                 # Performance statistics computation
-└── indicators/
-    └── common.py                # Signal utilities (crossover, echo, etc.)
-```
+1. **Backtester** — Event-driven backtesting engine for testing trading strategies on historical data, with built-in risk management (trailing stops, breakeven, take profit, stop loss)
 
 ## Installation
 
@@ -36,67 +15,34 @@ uv add git+https://github.com/r1quant/qfin
 uv add git+https://github.com/r1quant/qfin --upgrade-package qfin
 ```
 
----
-
-## API Module
-
-All API functions return a pandas DataFrame with lowercase OHLCV columns (`open`, `high`, `low`, `close`, `volume`) and a DatetimeIndex named `date`.
-
-### `yahoo(ticker, start, end, interval, period, ...)`
-
-Fetch data from Yahoo Finance via `yfinance`.
+## Example
 
 ```python
-from qfin.api.yahoo import yahoo
-df = yahoo(ticker="^SPX", start="2025-01-01", interval="1d")
+from qfin.backtester.runners import bt_signal_change
+
+backtest_params = {
+    "initial_balance": 10000,
+    "default_entry_value": 1,
+    "default_entry_value_max": 10000,
+    "commission": 0.001,
+    "trailing_enabled": True,
+    "trailing_activation_pct": 2,
+    "trailing_distance_pct": 2,
+    "trailing_min_step_pct": 1,
+    "takeprofit_pct": 10,
+    "stoploss_pct": 1,
+    "breakeven_pct": 2,
+    "leverage_column": "leverage",
+}
+
+bt = bt_signal_change(data, **backtest_params)
+bt.trades()
+bt.stats()
+bt.thumbnail()
+bt.plot()
 ```
 
-| Parameter  | Type            | Default | Description                               |
-| ---------- | --------------- | ------- | ----------------------------------------- |
-| `ticker`   | `str` or `list` | —       | Ticker symbol(s)                          |
-| `start`    | `str`           | `None`  | Start date (YYYY-MM-DD)                   |
-| `end`      | `str`           | `None`  | End date (YYYY-MM-DD)                     |
-| `interval` | `str`           | `"1d"`  | Data interval (1d, 1wk, 1mo, etc.)        |
-| `period`   | `str`           | `"max"` | Period to download (1d, 5d, 1mo, 1y, max) |
-
-### `bybit(ticker, start, end, interval, ...)`
-
-Fetch data from Bybit. Requires `BYBIT_API_KEY` and `BYBIT_API_SECRET` environment variables.
-
-```python
-from qfin.api.bybit import bybit
-df = bybit(ticker="BTCUSD", start="2014-01-01", end=None, interval="d")
-```
-
-| Parameter    | Type      | Default | Description                                                                        |
-| ------------ | --------- | ------- | ---------------------------------------------------------------------------------- |
-| `ticker`     | `str`     | —       | Trading pair (e.g., "BTCUSD")                                                      |
-| `start`      | `str`     | —       | Start date (YYYY-MM-DD), **required**                                              |
-| `end`        | `str`     | `None`  | End date; if None, fetches up to present                                           |
-| `interval`   | `str/int` | `240`   | Candle interval: 1,3,5,15,30,60,120,240,360,720,D,W,M or aliases (1h, 4h, d, etc.) |
-| `limit`      | `int`     | `1000`  | Max candles per API call                                                           |
-| `sleep_time` | `float`   | `1.5`   | Seconds between paginated API calls                                                |
-
-### `fred(series)`
-
-Fetch time series from the Federal Reserve Economic Data.
-
-```python
-from qfin.api.fred import fred
-df = fred("M2SL")  # M2 Money Supply
-```
-
-### `TvDatafeed` (TradingView)
-
-```python
-from qfin.api.tv import Interval, TvDatafeed
-tv = TvDatafeed()
-df = tv.get_hist(symbol="SPX", exchange="SP", interval=Interval.in_daily, n_bars=260)
-```
-
----
-
-## Backtester Module
+## Documentation
 
 ### Core Classes
 
@@ -113,16 +59,30 @@ bt = qfin.Backtester(
     commission=0.001,
     default_entry_value=1,          # 1 = 100% of balance per trade
     default_entry_value_max=20000,  # max $20,000 per trade
+    trailing_enabled=True,
+    trailing_activation_pct=2,      # activate after 2% profit
+    trailing_distance_pct=1,        # 1% distance from high/low
+    trailing_min_step_pct=0.5,      # min 0.5% step to update stop
+    takeprofit_pct=10,              # close at 10% profit
+    stoploss_pct=3,                 # close at 3% loss
+    breakeven_pct=2,                # move stop to entry after 2% profit
 )
 ```
 
-| Parameter                 | Type           | Default   | Description                                           |
-| ------------------------- | -------------- | --------- | ----------------------------------------------------- |
-| `dataset`                 | `pd.DataFrame` | —         | Historical data with `close` column and DatetimeIndex |
-| `initial_balance`         | `float`        | `10000.0` | Starting cash balance                                 |
-| `commission`              | `float`        | `0.001`   | Commission rate per trade (0.001 = 0.1%)              |
-| `default_entry_value`     | `float`        | `1`       | If ≤ 1: percentage of balance; if > 1: cash amount    |
-| `default_entry_value_max` | `float`        | `20000`   | Maximum position size cap                             |
+| Parameter                 | Type           | Default     | Description                                           |
+| ------------------------- | -------------- | ----------- | ----------------------------------------------------- |
+| `dataset`                 | `pd.DataFrame` | —           | Historical data with `close` column and DatetimeIndex |
+| `initial_balance`         | `float`        | `10000.0`   | Starting cash balance                                 |
+| `commission`              | `float`        | `0.01`      | Commission rate per trade (0.01 = 1%)                 |
+| `default_entry_value`     | `float`        | `1`         | If ≤ 1: percentage of balance; if > 1: cash amount    |
+| `default_entry_value_max` | `float`        | `1000000.0` | Maximum position size cap                             |
+| `trailing_enabled`        | `bool`         | `False`     | Enable trailing stop functionality                    |
+| `trailing_distance_pct`   | `float`        | `0`         | Distance from trailing high/low for stop (0–100%)     |
+| `trailing_activation_pct` | `float`        | `0`         | Profit threshold to activate trailing stop (0–100%)   |
+| `trailing_min_step_pct`   | `float`        | `0`         | Minimum step size for trailing stop updates (0–100%)  |
+| `takeprofit_pct`          | `float`        | `0`         | Take profit at this profit percentage (0–100%)        |
+| `stoploss_pct`            | `float`        | `0`         | Stop loss at this loss percentage (0–100%)            |
+| `breakeven_pct`           | `float`        | `0`         | Move stop to entry price after this profit (0–100%)   |
 
 **Key Methods:**
 
@@ -158,11 +118,12 @@ The strategy interacts with the broker at each bar:
 
 Represents a single trade. Key properties:
 
-| Property      | Description                                         |
-| ------------- | --------------------------------------------------- |
-| `pl_value`    | Profit/loss in cash units                           |
-| `pl_pct`      | Profit/loss as a decimal fraction (e.g., 0.05 = 5%) |
-| `commissions` | Total entry + exit commissions                      |
+| Property      | Description                                                                              |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| `pl_value`    | Profit/loss in cash units                                                                |
+| `pl_pct`      | Profit/loss as a decimal fraction (e.g., 0.05 = 5%)                                      |
+| `commissions` | Total entry + exit commissions                                                           |
+| `exit_reason` | Why the trade was closed: `"manual"`, `"stoploss"`, `"takeprofit"`, `"breakeven"`, or `"trailing"` |
 
 ### Usage Example
 
@@ -236,6 +197,19 @@ bt = bt_signal_change(dataset=df, leverage_column="leverage", initial_balance=10
 - **No trade on last bar**: The engine prevents opening new trades on the final bar.
 - **Position sizing**: `default_entry_value ≤ 1` is treated as a percentage of current balance; `> 1` is treated as a fixed cash amount, capped at `default_entry_value_max`.
 - **Commission**: Applied at both entry and exit, calculated as `entry_value * commission_rate`.
+
+### Risk Management
+
+Risk management checks run automatically at each bar before strategy logic. All percentage parameters must be between 0 and 100. Set to 0 (default) to disable.
+
+- **Stop Loss** (`stoploss_pct`): Closes the trade when unrealized loss reaches the threshold.
+- **Take Profit** (`takeprofit_pct`): Closes the trade when unrealized profit reaches the threshold.
+- **Breakeven** (`breakeven_pct`): Once profit reaches this threshold, the stop is moved to the entry price. If price returns to entry, the trade is closed at break-even.
+- **Trailing Stop** (`trailing_enabled`): Tracks the highest price (long) or lowest price (short) since entry.
+  - Activates only after profit reaches `trailing_activation_pct`.
+  - Stop is placed at `trailing_distance_pct` from the trailing high/low.
+  - Stop only moves forward (never backwards), and only updates when the move exceeds `trailing_min_step_pct`.
+- **Stop dominance**: When both breakeven and trailing stops are active, the most restrictive (closest to current price) takes priority.
 
 ---
 
@@ -326,63 +300,6 @@ Calmar = annualized_return / |max_drawdown|
 | `Kelly Criterion` | `win_rate - (1 - win_rate) / (avg_win / avg_loss)`   | Optimal fraction of capital to bet                |
 
 ---
-
-## Indicators Module
-
-### `continue_echo(dataserie, initial_value=None, skip_values=[None])`
-
-Forward-fills a signal series, carrying the last non-skip value forward.
-
-```python
-# Input:  [0, -1,  0,  0,  0,  1,  0,  0,  0]
-# Output: [0, -1, -1, -1, -1,  1,  1,  1,  1]
-from qfin.indicators.common import continue_echo
-result = continue_echo(df["signal"])
-```
-
-### `revert_echo(dataserie, empty_value=None)`
-
-Inverse of `continue_echo` — collapses consecutive identical values to a single event.
-
-```python
-# Input:  [0, -1, -1, -1, -1,  1,  1,  1,  1]
-# Output: [0, -1,  0,  0,  0,  1,  0,  0,  0]
-from qfin.indicators.common import revert_echo
-result = revert_echo(df["signal"], empty_value=0)
-```
-
-### `crossover(dataserie_a, dataserie_b=None, echo=False, nosignal_value=0)`
-
-Detect crossover between two series. Returns `1` when A crosses above B, `-1` when A crosses below B.
-
-```python
-from qfin.indicators.common import crossover
-signal = crossover(df["fast_ma"], df["slow_ma"], echo=True)
-```
-
-If `dataserie_b` is None, compares against the shifted version of `dataserie_a` (direction of change).
-
-### `direction(dataserie_a, dataserie_b=None, echo=True)`
-
-Alias for `crossover(..., echo=True, nosignal_value=0)`.
-
-### `crossover3(dataserie_a, dataserie_b, dataserie_c, echo=False, nosignal_value=0)`
-
-Three-series crossover producing six regimes:
-
-| Value | Label        | Condition                       |
-| ----- | ------------ | ------------------------------- |
-| `3`   | bullish      | A > B > C                       |
-| `2`   | accumulation | A > C > B (A > B, A > C, B < C) |
-| `1`   | recovery     | A < C < B (A > B, A < C, B < C) |
-| `-1`  | warning      | A < B, A > C, B > C             |
-| `-2`  | distribution | A < B, A < C, B > C             |
-| `-3`  | bearish      | A < B < C                       |
-
-```python
-from qfin.indicators.common import crossover3, crossover3_labels
-signal = crossover3(df["fast"], df["mid"], df["slow"], echo=True)
-```
 
 ## License
 
